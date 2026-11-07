@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# The local OpenMAIC checkout: cloned by scripts/setup-openmaic.mjs and built
+# there. It is never part of this package.
+vendor/
+
+# Plugin-local runtime state: the embedded PostgreSQL data directory (every
+# course lives here) and scratch output from the checks.
+runtime/
+*.log
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
