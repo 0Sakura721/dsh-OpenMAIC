@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="OpenMAIC">
+  <defs>
+    <linearGradient id="board" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b3a55"/>
+      <stop offset="1" stop-color="#141c2b"/>
+    </linearGradient>
+    <linearGradient id="chalk" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7fb2ff"/>
+      <stop offset="1" stop-color="#4f8ef7"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#board)"/>
+  <rect x="20" y="26" width="88" height="58" rx="8" fill="none" stroke="url(#chalk)" stroke-width="4"/>
+  <path d="M38 46h30M38 58h18" stroke="#e8eefc" stroke-width="4" stroke-linecap="round" opacity=".9"/>
+  <circle cx="88" cy="52" r="7" fill="#4f8ef7" opacity=".95"/>
+  <circle cx="104" cy="40" r="4" fill="#7fb2ff" opacity=".8"/>
+  <path d="M52 84v10M76 84v10M40 98h48" stroke="url(#chalk)" stroke-width="4" stroke-linecap="round"/>
+</svg>
