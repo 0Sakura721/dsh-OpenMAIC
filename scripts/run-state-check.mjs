@@ -144,6 +144,17 @@ check('the loading overlay shows until load', overlay !== null);
 const rootEl = container.querySelector('.lc-openmaic-root');
 console.log('root children:', [...(rootEl?.children ?? [])].map((c) => c.className).join(' | ') || '(none)');
 
+// The regression that cost the most: a stylesheet installed by an older build must
+// not survive and shadow the new rules.
+const styleNodes = [...window.document.querySelectorAll('style[data-lc-openmaic]')];
+console.log('installed styles:', styleNodes.map((n) => n.id).join(' | ') || '(none)');
+check('both stylesheets are installed', styleNodes.length === 2, `${styleNodes.length} nodes`);
+check(
+  'stylesheet ids carry a build marker',
+  styleNodes.every((n) => /\-frame-inset-/.test(n.id)),
+  styleNodes.map((n) => n.id).join(', '),
+);
+
 reactRoot.unmount();
 console.log(failures === 0 ? 'running state verified' : `${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);
