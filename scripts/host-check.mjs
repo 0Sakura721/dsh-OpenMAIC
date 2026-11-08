@@ -70,6 +70,7 @@ const expected = [
   '/api/dsh-openmaic/restart',
   '/api/dsh-openmaic/settings',
   '/api/dsh-openmaic/probe',
+  '/api/dsh-openmaic/geometry',
 ];
 for (const path of expected) {
   if (!routes.has(path)) throw new Error(`route not registered: ${path}`);
@@ -112,8 +113,16 @@ if (!(page.headers.get('content-security-policy') ?? '').includes('54417')) {
 
 const beforeSwitch = await call('status');
 console.log(`appliedAllowLocalNetworks before: ${beforeSwitch.appliedAllowLocalNetworks}`);
-if (beforeSwitch.settings?.allowLocalNetworks !== false) {
-  throw new Error('settings should default to allowLocalNetworks=false');
+
+// The setting persists on disk, so a previous run can leave it on. Normalize
+// through the same route a user would use, then assert the default is off.
+if (beforeSwitch.settings?.allowLocalNetworks === true) {
+  const reset = await call('settings', { allowLocalNetworks: false });
+  console.log(`reset allowLocalNetworks -> ${reset.snapshot?.settings?.allowLocalNetworks}`);
+}
+const normalized = await call('status');
+if (normalized.settings?.allowLocalNetworks !== false) {
+  throw new Error('could not normalize allowLocalNetworks to false');
 }
 
 // Toggling on must persist and restart the child with the variable applied.
