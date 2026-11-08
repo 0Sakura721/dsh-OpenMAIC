@@ -63,7 +63,13 @@ console.log(`plugin name: ${mod.name}`);
 
 mod.apply(ctx, { autoStart: true, startupTimeoutMs: 300_000 });
 
-const expected = ['/api/dsh-openmaic/status', '/api/dsh-openmaic/start', '/api/dsh-openmaic/stop', '/api/dsh-openmaic/restart'];
+const expected = [
+  '/api/dsh-openmaic/status',
+  '/api/dsh-openmaic/start',
+  '/api/dsh-openmaic/stop',
+  '/api/dsh-openmaic/restart',
+  '/api/dsh-openmaic/settings',
+];
 for (const path of expected) {
   if (!routes.has(path)) throw new Error(`route not registered: ${path}`);
   console.log(`route ok: ${path}`);
@@ -103,6 +109,29 @@ if (!(page.headers.get('content-security-policy') ?? '').includes('54417')) {
   throw new Error('the proxy did not admit the Harness origin');
 }
 
+const beforeSwitch = await call('status');
+console.log(`appliedAllowLocalNetworks before: ${beforeSwitch.appliedAllowLocalNetworks}`);
+if (beforeSwitch.settings?.allowLocalNetworks !== false) {
+  throw new Error('settings should default to allowLocalNetworks=false');
+}
+
+// Toggling on must persist and restart the child with the variable applied.
+const toggled = await call('settings', { allowLocalNetworks: true });
+console.log(
+  `switch -> ${toggled.snapshot?.settings?.allowLocalNetworks} ` +
+    `(changed=${toggled.changed}, restarted=${toggled.restarted}, ` +
+    `applied=${toggled.snapshot?.appliedAllowLocalNetworks})`,
+);
+if (toggled.snapshot?.settings?.allowLocalNetworks !== true) {
+  throw new Error('the setting did not persist');
+}
+if (toggled.snapshot?.appliedAllowLocalNetworks !== true) {
+  throw new Error('the restarted child does not report ALLOW_LOCAL_NETWORKS');
+}
+if (toggled.snapshot?.phase !== 'running') {
+  throw new Error(`the stack is not running after the restart: ${toggled.snapshot?.phase}`);
+}
+
 const stoppedResult = await call('stop');
 console.log(`after stop: ${stoppedResult.phase}`);
 for (const dispose of effects) {
@@ -111,9 +140,8 @@ for (const dispose of effects) {
   } catch {}
 }
 console.log('host half verified');
-
 /** Invoke a route the way the web server would. */
-async function call(action) {
+async function call(action, body) {
   const route = routes.get(`/api/dsh-openmaic/${action}`);
   let payload = '';
   const res = {
@@ -123,13 +151,13 @@ async function call(action) {
     },
   };
   // A real IncomingMessage always ends; the fixture must too, or readBody waits
-  // forever and the stop route never answers.
-  const listeners = new Map();
+  // forever and the route never answers.
+  const encoded = body === undefined ? '' : JSON.stringify(body);
   const req = {
-    method: action === 'status' ? 'GET' : 'POST',
+    method: body === undefined && action === 'status' ? 'GET' : 'POST',
     on(event, handler) {
-      listeners.set(event, handler);
       if (event === 'end') setImmediate(() => handler());
+      if (event === 'data' && encoded !== '') setImmediate(() => handler(encoded));
       return req;
     },
     destroy() {},

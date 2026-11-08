@@ -17,7 +17,7 @@ external PostgreSQL, no cloud dependency.
 | Database | embedded **PGlite 18.6** + `pglite-socket` | PostgreSQL compiled to WASM, exposed as a real wire-protocol listener on `127.0.0.1:<random port>`. OpenMAIC's own `pg` driver connects to it, so every migration and query runs unmodified |
 | App | managed **OpenMAIC standalone server** | `.next/standalone/server.js` as a child process; output is folded into the Harness log and the whole tree is killed on dispose |
 | Embedding | **header-rewriting reverse proxy** | OpenMAIC bakes `frame-ancestors 'self'` at build time while the Harness port changes every restart; the proxy rewrites that header at runtime so the iframe is allowed |
-| UI | sidebar entry + main panel + settings card | the panel is a full-height iframe; when stopped it offers start/retry and shows the raw error |
+| UI | sidebar entry + status bar + main panel + settings card | the panel is a full-height iframe under an always-visible status bar; the settings card carries the local-network switch |
 | Tool | `openmaic_local` | the agent can query, start, stop and restart the local classroom server |
 
 ## Install
@@ -62,9 +62,42 @@ default:
 | `dataDir` | `runtime/pgdata` | embedded data directory — every course lives here |
 | `appPort` / `proxyPort` | `0` (automatic) | pin the ports when needed |
 | `startupTimeoutMs` | `300000` | total health-check budget |
+| `nodePath` | `''` (auto) | the Node binary used for the app child; see below |
+| `allowLocalNetworks` | `false` | initial value of the local-network switch |
 | `env` | `{}` | extra environment passed to OpenMAIC |
 
-Deleting `runtime/pgdata` deletes every course.
+Deleting `runtime/pgdata` deletes every course. `runtime/settings.json` holds the
+settings the card toggles.
+
+### Why `nodePath` exists
+
+The Desktop Host is Electron, so inside it `process.execPath` is
+`DeepSeek Harness.exe` — spawning that with a `.js` argument starts a second GUI
+app rather than a server, and the symptom is silence: no child, no port, no error.
+The plugin therefore resolves a real runtime in this order: `config.nodePath`,
+then `node` on `PATH`, then the Desktop binary with `ELECTRON_RUN_AS_NODE=1`.
+
+### Local / private network model endpoints
+
+OpenMAIC refuses to send requests to loopback or private ranges, which is what
+produces:
+
+```text
+Local/private network URLs are not allowed. If this is a self-hosted deployment or
+internal gateway (including split-horizon DNS), set ALLOW_LOCAL_NETWORKS=true to
+allow local network targets.
+```
+
+The plugin's settings card exposes that switch. It maps to OpenMAIC's
+`ALLOW_LOCAL_NETWORKS`, is persisted in `runtime/settings.json`, and — because the
+guard reads `process.env` inside the app child, which no parent can mutate — is
+applied by restarting **only the app child**. The embedded database keeps running,
+so courses and uploads are untouched.
+
+The switch is not a blanket bypass: cloud metadata endpoints (`169.254.169.254`,
+`fd00:ec2::254`, `100.100.100.200`) and IANA reserved/multicast ranges stay
+refused in both states. `scripts/allowlocal-behaviour.mjs` proves this against
+OpenMAIC's own compiled guard.
 
 ## Two honest limits
 
@@ -83,16 +116,22 @@ plugin can fix by configuration.
 Three checks, each independent of the Harness UI:
 
 ```bash
-node scripts/smoke.mjs             # stack, proxy, framed page, rewritten headers
-node scripts/host-check.mjs        # apply() against a fake Cordis context, stopped -> running -> stopped
-node scripts/persistence-check.mjs # write a folder, stop the stack, start it again, read it back
-node scripts/inspect-db.mjs        # every table and row count in the embedded database
+node scripts/imports-check.mjs       # every named import actually exists (seconds)
+node scripts/render-check.mjs        # each slot renders real markup with real React
+node scripts/smoke.mjs               # stack, proxy, framed page, rewritten headers
+node scripts/host-check.mjs          # apply() against a fake Cordis context, plus the switch
+node scripts/persistence-check.mjs   # write a folder, stop the stack, start it again, read it back
+node scripts/settings-check.mjs      # the switch persists and reaches the app child
+node scripts/allowlocal-behaviour.mjs # the switch's semantics, against OpenMAIC's real guard
+node scripts/inspect-db.mjs          # every table and row count in the embedded database
 ```
 
 `smoke` asserts that the page answers 200, that `frame-ancestors` admits the
 Harness origin, and that `X-Frame-Options` is gone. `persistence-check` is the
 one that matters for users: a folder written through the proxied origin is still
-there after the plugin's own stop/start cycle.
+there after the plugin's own stop/start cycle. `allowlocal-behaviour` compiles
+OpenMAIC's `ssrf-guard.ts` and asserts the toggle flips loopback/RFC1918/CGNAT
+from refused to allowed while metadata stays refused.
 
 ## License
 
