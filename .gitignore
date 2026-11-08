@@ -22,3 +22,13 @@ Thumbs.db
 .frame-check.png
 .asar.mjs
 runtime/panel-geometry.json
+.render-check-profile/
+.render-check.png
+.srcdoc-check-profile/
+.srcdoc-check.png
+.srcdoc-render-profile/
+.srcdoc-render.png
+.srcdoc-payload.html
+.embed-check-profile/
+.embed-check.png
+panel.html

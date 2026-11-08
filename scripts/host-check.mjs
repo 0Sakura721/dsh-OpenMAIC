@@ -71,6 +71,7 @@ const expected = [
   '/api/dsh-openmaic/settings',
   '/api/dsh-openmaic/probe',
   '/api/dsh-openmaic/geometry',
+  '/api/dsh-openmaic/embed',
 ];
 for (const path of expected) {
   if (!routes.has(path)) throw new Error(`route not registered: ${path}`);
