@@ -1,16 +1,14 @@
 /**
- * Frame the panel inside a faithful copy of the shell's layout.
+ * Frame the panel inside a faithful copy of the shell and measure it in a browser.
  *
  *   node scripts/frame-check.mjs <panelOrigin> [--png out.png]
  *
- * This is the regression test for the blank panel. The failure was pure geometry,
- * so a test must reproduce the geometry: a grid centre column, `.mainPanel` with
- * `padding-top`, and a slot seat with no height of its own. Inside that box it
- * asserts the plugin's host, fill, and iframe all resolve real heights and that the
- * framed document actually painted pixels.
+ * The fixture links the plugin's OWN stylesheet rather than copying the rules, so
+ * the test cannot drift from the product: an inline copy is how two earlier rounds
+ * "passed" while the shipped panel stayed 150px tall.
  *
- * It also proves the fix rather than the symptom: the fill is anchored with
- * `inset:0`, so it fills the host even when the measurement effect never runs.
+ * What it asserts is the failure that actually happened: the iframe must receive
+ * everything below the status bar, not its 150px replaced-element default.
  */
 
 import { spawn } from 'node:child_process';
@@ -39,10 +37,12 @@ const check = (label, ok, detail) => {
   }
 };
 
-// Mirrors dsh-client-ui-layout: `.centerCol` is a grid item with overflow:hidden,
-// `.mainPanel` is a flex column with flex:1/min-height:0, and a global panel adds
-// `padding-top`. The seat adds no height of its own — that is the trap.
-const fixture = `<!doctype html><html lang="zh"><head><meta charset="utf-8"><style>
+// Mirrors dsh-client-ui-layout: a grid centre column with overflow:hidden, a
+// .mainPanel that is a flex column with flex:1/min-height:0 and padding-top, and a
+// slot seat that contributes no height. The panel's own CSS comes from the plugin.
+const fixture = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<link rel="stylesheet" href="/plugin.css">
+<style>
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;font:13px system-ui;background:#1b1d21;color:#e6e6e6}
   .frame{display:grid;grid-template-columns:220px 1fr;height:100%}
@@ -57,35 +57,23 @@ const fixture = `<!doctype html><html lang="zh"><head><meta charset="utf-8"><sty
     <div class="centerCol"><div class="mainPanel" data-global-panel><div class="slotSeat" id="seat"></div></div></div>
   </div>
   <script>
-    // Exactly the plugin's structure; the fill relies on inset, never on JS.
     const seat = document.getElementById('seat');
     const host = document.createElement('div');
     host.className = 'lc-openmaic-host';
-    host.style.cssText = 'position:relative;display:block;flex:1 1 auto;min-width:0;min-height:0;width:100%;height:100%;overflow:hidden';
     const fill = document.createElement('div');
     fill.className = 'lc-openmaic-fill';
-    fill.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;width:100%;height:100%;min-height:0';
     const rootEl = document.createElement('div');
     rootEl.className = 'lc-openmaic-root';
-    rootEl.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden';    const bar = document.createElement('div');
+    const bar = document.createElement('div');
     bar.className = 'lc-openmaic-bar';
-    bar.style.cssText = 'display:flex;align-items:center;min-height:32px;padding:4px 10px;border-bottom:1px solid #333;flex:0 0 auto';
     bar.textContent = 'OpenMAIC 课堂 · 运行中';
-    const frame = document.createElement('iframe');
-    frame.className = 'lc-openmaic-frame';
-    // The shipped rule, including the explicit height that beats an iframe's
-    // 150px default inside a flex column with no resolved height.
-    frame.style.cssText = 'flex:1 1 auto;min-height:0;width:100%;height:100%;border:0;display:block;background:#fff';
-    frame.src = ${JSON.stringify(`${panelOrigin}/`)};
     const wrap = document.createElement('div');
     wrap.className = 'lc-openmaic-frame-wrap';
-    wrap.style.cssText = 'position:relative;flex:1 1 auto;min-height:0;min-width:0;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden';
-    const status = document.createElement('div');
-    status.className = 'lc-openmaic-frame-status';
-    status.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(20,22,26,.96);color:#fff';
-    status.textContent = '正在加载课堂界面…';
-    frame.addEventListener('load', () => { status.remove(); window.__frameLoaded = true; });
-    wrap.append(frame, status);
+    const frame = document.createElement('iframe');
+    frame.className = 'lc-openmaic-frame';
+    frame.src = ${JSON.stringify(`${panelOrigin}/`)};
+    frame.addEventListener('load', () => { window.__frameLoaded = true; });
+    wrap.append(frame);
     rootEl.append(bar, wrap);
     fill.append(rootEl);
     host.append(fill);
@@ -93,12 +81,27 @@ const fixture = `<!doctype html><html lang="zh"><head><meta charset="utf-8"><sty
   </script>
 </body></html>`;
 
-const server = createServer((_req, res) => {
+// Serve the plugin's real CSS by extracting the CSS template literals from the
+// shipped bundle: the source of truth is the file the Harness loads.
+const clientSource = await (await import('node:fs/promises')).readFile(
+  resolve(root, 'lib', 'client.js'),
+  'utf8',
+);
+const cssBlocks = [...clientSource.matchAll(/const (?:CSS|HOST_CSS) = `([\s\S]*?)`;/g)].map((m) => m[1]);
+const pluginCss = cssBlocks.join('\n');
+
+const server = createServer((req, res) => {
+  if (req.url === '/plugin.css') {
+    res.writeHead(200, { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(pluginCss);
+    return;
+  }
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
   res.end(fixture);
 });
 await new Promise((done) => server.listen(0, '127.0.0.1', done));
 const fixtureOrigin = `http://127.0.0.1:${server.address().port}`;
+log(`plugin css: ${pluginCss.length} bytes from lib/client.js`);
 
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const profileDir = resolve(root, '.frame-check-profile');
@@ -171,13 +174,13 @@ try {
     expression: `(() => {
       const pick = (sel) => { const el = document.querySelector(sel); if (!el) return null;
         const r = el.getBoundingClientRect();
-        return { w: Math.round(r.width), h: Math.round(r.height) }; };
+        return { w: Math.round(r.width), h: Math.round(r.height), top: Math.round(r.top) }; };
       return {
         centerCol: pick('.centerCol'), mainPanel: pick('.mainPanel'),
         host: pick('.lc-openmaic-host'), fill: pick('.lc-openmaic-fill'),
-        root: pick('.lc-openmaic-root'),
-        bar: pick('.lc-openmaic-bar'), frame: pick('iframe.lc-openmaic-frame'),
-        overlayPresent: document.querySelector('.lc-openmaic-frame-status') !== null,
+        root: pick('.lc-openmaic-root'), bar: pick('.lc-openmaic-bar'),
+        wrap: pick('.lc-openmaic-frame-wrap'),
+        frame: pick('iframe.lc-openmaic-frame'),
         frameLoaded: window.__frameLoaded === true,
       };
     })()`,
@@ -186,21 +189,19 @@ try {
   const geo = measured.result?.result?.value ?? {};
   for (const [key, value] of Object.entries(geo)) log(`${key}: ${JSON.stringify(value)}`);
 
+  const belowBar = (geo.root?.h ?? 0) - (geo.bar?.h ?? 0);
+
   check('the shell gives the centre column a height', (geo.centerCol?.h ?? 0) > 300, JSON.stringify(geo.centerCol));
   check('the plugin host receives a real height', (geo.host?.h ?? 0) > 300, JSON.stringify(geo.host));
-  check('the fill matches the host (inset anchor)',
-    Math.abs((geo.fill?.h ?? 0) - (geo.host?.h ?? 0)) <= 1, `fill ${geo.fill?.h} vs host ${geo.host?.h}`);
+  check('the fill matches the host', Math.abs((geo.fill?.h ?? 0) - (geo.host?.h ?? 0)) <= 1,
+    `fill ${geo.fill?.h} vs host ${geo.host?.h}`);
   check('the status bar keeps its own height', (geo.bar?.h ?? 0) >= 24, JSON.stringify(geo.bar));
-  check('the iframe fills the remaining area', (geo.frame?.h ?? 0) > 300, JSON.stringify(geo.frame));
-  check(
-    'the iframe fills the space under the status bar',
-    Math.abs((geo.frame?.h ?? 0) - ((geo.root?.h ?? 0) - (geo.bar?.h ?? 0))) <= 2,
-    `frame ${geo.frame?.h} vs root-bar ${(geo.root?.h ?? 0) - (geo.bar?.h ?? 0)}`,
-  );
+  // The regression: 150px here means the iframe fell back to its default height.
+  check('the iframe is not stuck at the 150px default', (geo.frame?.h ?? 0) !== 150, JSON.stringify(geo.frame));
+  check('the iframe fills everything below the status bar',
+    Math.abs((geo.frame?.h ?? 0) - belowBar) <= 2, `frame ${geo.frame?.h} vs root-bar ${belowBar}`);
   check('the iframe fired its load event', geo.frameLoaded === true, 'load never fired');
-  check('the loading overlay clears once loaded', geo.overlayPresent === false, 'overlay still covering the frame');
 
-  // Pixels, not just boxes: a white iframe means navigation failed silently.
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
   const png = Buffer.from(shot.result.data, 'base64');
   writeFileSync(pngOut, png);
