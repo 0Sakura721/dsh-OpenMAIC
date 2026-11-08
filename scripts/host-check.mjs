@@ -69,6 +69,7 @@ const expected = [
   '/api/dsh-openmaic/stop',
   '/api/dsh-openmaic/restart',
   '/api/dsh-openmaic/settings',
+  '/api/dsh-openmaic/probe',
 ];
 for (const path of expected) {
   if (!routes.has(path)) throw new Error(`route not registered: ${path}`);

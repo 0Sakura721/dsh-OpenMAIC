@@ -76,7 +76,16 @@ const fixture = `<!doctype html><html lang="zh"><head><meta charset="utf-8"><sty
     frame.className = 'lc-openmaic-frame';
     frame.style.cssText = 'flex:1 1 auto;min-height:0;width:100%;border:0;display:block;background:#fff';
     frame.src = ${JSON.stringify(`${panelOrigin}/`)};
-    rootEl.append(bar, frame);
+    const wrap = document.createElement('div');
+    wrap.className = 'lc-openmaic-frame-wrap';
+    wrap.style.cssText = 'position:relative;flex:1 1 auto;min-height:0;width:100%;display:flex;flex-direction:column;overflow:hidden';
+    const status = document.createElement('div');
+    status.className = 'lc-openmaic-frame-status';
+    status.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(20,22,26,.96);color:#fff';
+    status.textContent = '正在加载课堂界面…';
+    frame.addEventListener('load', () => { status.remove(); window.__frameLoaded = true; });
+    wrap.append(frame, status);
+    rootEl.append(bar, wrap);
     fill.append(rootEl);
     host.append(fill);
     seat.append(host);
@@ -166,6 +175,8 @@ try {
         centerCol: pick('.centerCol'), mainPanel: pick('.mainPanel'),
         host: pick('.lc-openmaic-host'), fill: pick('.lc-openmaic-fill'),
         bar: pick('.lc-openmaic-bar'), frame: pick('iframe.lc-openmaic-frame'),
+        overlayPresent: document.querySelector('.lc-openmaic-frame-status') !== null,
+        frameLoaded: window.__frameLoaded === true,
       };
     })()`,
     returnByValue: true,
@@ -179,6 +190,8 @@ try {
     Math.abs((geo.fill?.h ?? 0) - (geo.host?.h ?? 0)) <= 1, `fill ${geo.fill?.h} vs host ${geo.host?.h}`);
   check('the status bar keeps its own height', (geo.bar?.h ?? 0) >= 24, JSON.stringify(geo.bar));
   check('the iframe fills the remaining area', (geo.frame?.h ?? 0) > 300, JSON.stringify(geo.frame));
+  check('the iframe fired its load event', geo.frameLoaded === true, 'load never fired');
+  check('the loading overlay clears once loaded', geo.overlayPresent === false, 'overlay still covering the frame');
 
   // Pixels, not just boxes: a white iframe means navigation failed silently.
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
