@@ -136,12 +136,12 @@ const check = (label, ok, detail) => {
 check('the panel paints a status bar', bar !== null);
 check('the panel host exists', host !== null);
 check('the fill exists', fill !== null);
-// The load-bearing guarantee: the fill is anchored by CSS, so it never depends on
-// a measurement effect having run.
+// The load-bearing guarantee: the panel is sized by CSS alone, so it can never
+// depend on a measurement effect having run.
 check(
   'the fill never relies on an inline height to fill its host',
-  fill !== null && fill.style.height === '',
-  `inline height was "${fill?.style.height ?? ''}"`,
+  fill !== null && fill.style.height === '' && fill.style.minHeight === '',
+  `inline height="${fill?.style.height ?? ''}" min-height="${fill?.style.minHeight ?? ''}"`,
 );
 
 reactRoot.unmount();
