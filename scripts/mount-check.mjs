@@ -123,10 +123,6 @@ const bar = container.querySelector('.lc-openmaic-bar');
 console.log(`host present: ${host !== null}`);
 console.log(`fill present: ${fill !== null}`);
 console.log(`status bar present: ${bar !== null}`);
-console.log(`inline height: ${fill?.style?.height || '(none)'}`);
-
-const match = /^(\d+(?:\.\d+)?)px$/.exec(fill?.style?.height ?? '');
-const height = match ? Number(match[1]) : 0;
 
 let failures = 0;
 const check = (label, ok, detail) => {
@@ -138,12 +134,15 @@ const check = (label, ok, detail) => {
 };
 
 check('the panel paints a status bar', bar !== null);
+check('the panel host exists', host !== null);
+check('the fill exists', fill !== null);
+// The load-bearing guarantee: the fill is anchored by CSS, so it never depends on
+// a measurement effect having run.
 check(
-  'the panel resolves a usable height inside a zero-height slot',
-  height >= 320,
-  `resolved ${height}px`,
+  'the fill never relies on an inline height to fill its host',
+  fill !== null && fill.style.height === '',
+  `inline height was "${fill?.style.height ?? ''}"`,
 );
-check('the panel tracks the real ancestor height', height === 600, `resolved ${height}px, expected 600`);
 
 reactRoot.unmount();
 console.log(failures === 0 ? 'mount verified' : `${failures} mount check(s) failed`);

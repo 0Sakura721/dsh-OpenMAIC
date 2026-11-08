@@ -16,3 +16,8 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Browser probes written by scripts/frame-check.mjs
+.frame-check-profile/
+.frame-check.png
+.asar.mjs
