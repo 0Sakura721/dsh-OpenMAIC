@@ -67,18 +67,19 @@ const fixture = `<!doctype html><html lang="zh"><head><meta charset="utf-8"><sty
     fill.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;width:100%;height:100%;min-height:0';
     const rootEl = document.createElement('div');
     rootEl.className = 'lc-openmaic-root';
-    rootEl.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden';
-    const bar = document.createElement('div');
+    rootEl.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden';    const bar = document.createElement('div');
     bar.className = 'lc-openmaic-bar';
     bar.style.cssText = 'display:flex;align-items:center;min-height:32px;padding:4px 10px;border-bottom:1px solid #333;flex:0 0 auto';
     bar.textContent = 'OpenMAIC 课堂 · 运行中';
     const frame = document.createElement('iframe');
     frame.className = 'lc-openmaic-frame';
-    frame.style.cssText = 'flex:1 1 auto;min-height:0;width:100%;border:0;display:block;background:#fff';
+    // The shipped rule, including the explicit height that beats an iframe's
+    // 150px default inside a flex column with no resolved height.
+    frame.style.cssText = 'flex:1 1 auto;min-height:0;width:100%;height:100%;border:0;display:block;background:#fff';
     frame.src = ${JSON.stringify(`${panelOrigin}/`)};
     const wrap = document.createElement('div');
     wrap.className = 'lc-openmaic-frame-wrap';
-    wrap.style.cssText = 'position:relative;flex:1 1 auto;min-height:0;width:100%;display:flex;flex-direction:column;overflow:hidden';
+    wrap.style.cssText = 'position:relative;flex:1 1 auto;min-height:0;min-width:0;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden';
     const status = document.createElement('div');
     status.className = 'lc-openmaic-frame-status';
     status.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(20,22,26,.96);color:#fff';
@@ -174,6 +175,7 @@ try {
       return {
         centerCol: pick('.centerCol'), mainPanel: pick('.mainPanel'),
         host: pick('.lc-openmaic-host'), fill: pick('.lc-openmaic-fill'),
+        root: pick('.lc-openmaic-root'),
         bar: pick('.lc-openmaic-bar'), frame: pick('iframe.lc-openmaic-frame'),
         overlayPresent: document.querySelector('.lc-openmaic-frame-status') !== null,
         frameLoaded: window.__frameLoaded === true,
@@ -190,6 +192,11 @@ try {
     Math.abs((geo.fill?.h ?? 0) - (geo.host?.h ?? 0)) <= 1, `fill ${geo.fill?.h} vs host ${geo.host?.h}`);
   check('the status bar keeps its own height', (geo.bar?.h ?? 0) >= 24, JSON.stringify(geo.bar));
   check('the iframe fills the remaining area', (geo.frame?.h ?? 0) > 300, JSON.stringify(geo.frame));
+  check(
+    'the iframe fills the space under the status bar',
+    Math.abs((geo.frame?.h ?? 0) - ((geo.root?.h ?? 0) - (geo.bar?.h ?? 0))) <= 2,
+    `frame ${geo.frame?.h} vs root-bar ${(geo.root?.h ?? 0) - (geo.bar?.h ?? 0)}`,
+  );
   check('the iframe fired its load event', geo.frameLoaded === true, 'load never fired');
   check('the loading overlay clears once loaded', geo.overlayPresent === false, 'overlay still covering the frame');
 
