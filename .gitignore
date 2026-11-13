@@ -32,3 +32,11 @@ runtime/panel-geometry.json
 .embed-check-profile/
 .embed-check.png
 panel.html
+
+# Browser probe profiles and screenshots written by the check scripts. Anchored
+# with a dot prefix so a single rule covers every future probe name instead of
+# one line per script (an unlisted profile was committed once already).
+.*-profile/
+.*-profile-*/
+.*-check.png
+.*-check-profile/
