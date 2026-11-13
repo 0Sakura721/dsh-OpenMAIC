@@ -1,139 +1,99 @@
-# OpenMAIC
+# dsh-openmaic
 
-OpenMAIC (Open Multi-Agent Interactive Classroom) is an open-source AI classroom
-platform from the THU-MAIC group: any topic or document becomes a multi-agent
-lesson — slides, quizzes, interactive simulations and project-based learning,
-delivered by AI teachers and AI classmates that speak, draw on a whiteboard and
-discuss in real time.
+OpenMAIC teaching cards for DeepSeek Harness: the model writes an interactive
+lesson card — a concept explainer, a quiz, a step-by-step walkthrough, or a slide —
+and it renders inline in the conversation.
 
-This repository turns https://github.com/THU-MAIC/OpenMAIC into a **first-class
-DeepSeek Harness plugin** that runs **entirely on your machine**: no Docker, no
-external PostgreSQL, no cloud dependency.
+No server, no database, no network. The card is a self-contained HTML document in
+a sandboxed frame.
 
-## What it installs
+## Why this shape
 
-| Layer | Implementation | Notes |
-| --- | --- | --- |
-| Database | embedded **PGlite 18.6** + `pglite-socket` | PostgreSQL compiled to WASM, exposed as a real wire-protocol listener on `127.0.0.1:<random port>`. OpenMAIC's own `pg` driver connects to it, so every migration and query runs unmodified |
-| App | managed **OpenMAIC standalone server** | `.next/standalone/server.js` as a child process; output is folded into the Harness log and the whole tree is killed on dispose |
-| Embedding | **header-rewriting reverse proxy** | OpenMAIC bakes `frame-ancestors 'self'` at build time while the Harness port changes every restart; the proxy rewrites that header at runtime so the iframe is allowed |
-| UI | sidebar entry + status bar + main panel + settings card | the panel is a full-height iframe under an always-visible status bar; the settings card carries the local-network switch |
-| Tool | `openmaic_local` | the agent can query, start, stop and restart the local classroom server |
+This plugin used to embed the whole OpenMAIC web application: Next.js behind a
+loopback proxy, framed in a panel. That approach failed three ways, each measured:
+
+| Attempt | Failure |
+| --- | --- |
+| Cross-origin `iframe src` | The frame loaded and computed but was not painted; the panel stayed blank while the server reported healthy |
+| `iframe srcdoc` of the whole app | Painted, but an `about:srcdoc` document has an **opaque origin**, so OpenMAIC's 254 absolute `fetch('/api/...')` calls resolved nowhere — every control was dead |
+| Same-origin `/openmaic` prefix | OpenMAIC's absolute `/api` calls do not honour `basePath`, so they collided with the Harness's own `/api`; a proxy piping bodies through the Host's request handler wedged the entire Web UI |
+
+Upstream [`THU-MAIC/dsh-openmaic`](https://github.com/THU-MAIC/dsh-openmaic) takes
+the opposite approach and it is the correct one: never host the app. Ship the
+*content* — a self-contained HTML artifact — into a sandboxed frame that needs no
+backend. That is what this repository implements.
+
+## What it contributes
+
+| Piece | File |
+| --- | --- |
+| `openmaic_render` tool | [lib/index.js](lib/index.js) |
+| Fragment contract + validator | [lib/fragment.mjs](lib/fragment.mjs) |
+| Sandboxed teaching card (`tool.call.toolview`) | [lib/client.js](lib/client.js) |
 
 ## Install
 
-```bash
-# 1) Prepare the OpenMAIC checkout and its production build (idempotent)
-node scripts/setup-openmaic.mjs
-
-# 2) Install the plugin into the current Harness profile
-#    In a Harness session: plugin_manager -> install_bundle -> absolute path of this directory
+```
+plugin_manager → install_bundle → <absolute path to this directory>
 ```
 
-After installation the plugin starts the local stack automatically: a
-**Classroom** entry appears in the sidebar and the main panel *is* OpenMAIC.
+Then restart the Harness.
 
-Installing changes the profile's package set, so the Harness asks for a restart
-the first time.
+## The card contract
 
-### Optional dependencies
+The model passes an **inline HTML fragment**: markup, `<style>` and `<script>`
+only. No `<!doctype>`, `<html>`, `<head>` or `<body>` — the card supplies the
+document shell, and a pasted whole document would nest one document inside
+another.
 
-The database driver ships as `optionalDependencies`:
+### Isolation
 
-```
-@electric-sql/pglite          ^0.5.15
-@electric-sql/pglite-socket   ^0.2.18
-```
-
-If an install skips optional dependencies, startup reports it explicitly instead
-of failing silently. You can also point `config.databaseUrl` at an existing
-PostgreSQL and skip the embedded database entirely.
-
-## Configuration
-
-The `cordis.patch.yml` row accepts a `config` block; every field has a safe
-default:
-
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `autoStart` | `true` | bring the stack up with the Harness |
-| `appDir` | `vendor/OpenMAIC` | the OpenMAIC checkout |
-| `databaseUrl` | `''` (embedded) | set to use an external PostgreSQL |
-| `dataDir` | `runtime/pgdata` | embedded data directory — every course lives here |
-| `appPort` / `proxyPort` | `0` (automatic) | pin the ports when needed |
-| `startupTimeoutMs` | `300000` | total health-check budget |
-| `nodePath` | `''` (auto) | the Node binary used for the app child; see below |
-| `allowLocalNetworks` | `false` | initial value of the local-network switch |
-| `env` | `{}` | extra environment passed to OpenMAIC |
-
-Deleting `runtime/pgdata` deletes every course. `runtime/settings.json` holds the
-settings the card toggles.
-
-### Why `nodePath` exists
-
-The Desktop Host is Electron, so inside it `process.execPath` is
-`DeepSeek Harness.exe` — spawning that with a `.js` argument starts a second GUI
-app rather than a server, and the symptom is silence: no child, no port, no error.
-The plugin therefore resolves a real runtime in this order: `config.nodePath`,
-then `node` on `PATH`, then the Desktop binary with `ELECTRON_RUN_AS_NODE=1`.
-
-### Local / private network model endpoints
-
-OpenMAIC refuses to send requests to loopback or private ranges, which is what
-produces:
-
-```text
-Local/private network URLs are not allowed. If this is a self-hosted deployment or
-internal gateway (including split-horizon DNS), set ALLOW_LOCAL_NETWORKS=true to
-allow local network targets.
+```html
+<iframe sandbox="allow-scripts" srcdoc="…">
 ```
 
-The plugin's settings card exposes that switch. It maps to OpenMAIC's
-`ALLOW_LOCAL_NETWORKS`, is persisted in `runtime/settings.json`, and — because the
-guard reads `process.env` inside the app child, which no parent can mutate — is
-applied by restarting **only the app child**. The embedded database keeps running,
-so courses and uploads are untouched.
+`allow-scripts` **without** `allow-same-origin` puts the card in an opaque origin:
+it cannot read the Harness page, its storage, or its cookies. That is the entire
+security model.
 
-The switch is not a blanket bypass: cloud metadata endpoints (`169.254.169.254`,
-`fd00:ec2::254`, `100.100.100.200`) and IANA reserved/multicast ranges stay
-refused in both states. `scripts/allowlocal-behaviour.mjs` proves this against
-OpenMAIC's own compiled guard.
+Inside the frame, a CSP confines further:
 
-## Two honest limits
+```
+default-src 'none'
+script-src  'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' <CDN allowlist>
+style-src   'unsafe-inline' <CDN allowlist>
+img-src / font-src / media-src  <CDN allowlist>
+connect-src blob: data:        ← no network
+frame-src 'none'  object-src 'none'  base-uri 'none'  form-action 'none'
+```
 
-1. **LISTEN/NOTIFY does not cross the socket layer.** OpenMAIC's wakeup bus falls
-   back to polling. Correctness is unaffected — the durable event log is the
-   source of truth — only stream latency degrades slightly.
-2. **One database is multiplexed over many connections.** `pglite-socket`
-   serializes concurrent write transactions. That is fine for a personal local
-   classroom; it is not a multi-tenant deployment.
+Design consequences worth knowing when authoring a card:
 
-Both are properties of running PostgreSQL-in-WASM locally, not defects this
-plugin can fix by configuration.
+- `fetch`, `XMLHttpRequest` and `WebSocket` are blocked. Compute locally.
+- `localStorage` throws on an opaque origin. Keep state in memory.
+- Static assets must come from the CDN allowlist (jsdelivr, unpkg, esm.sh,
+  cdnjs, Google Fonts).
+- `postMessage` reaches the host only to report the card's height.
+
+The card reports its own height, so it grows with its content — a simulation that
+resizes a canvas is handled, a fixed guess is not.
 
 ## Verification
 
-Three checks, each independent of the Harness UI:
-
 ```bash
-node scripts/imports-check.mjs       # every named import actually exists (seconds)
-node scripts/render-check.mjs        # each slot renders real markup with real React
-node scripts/smoke.mjs               # stack, proxy, framed page, rewritten headers
-node scripts/host-check.mjs          # apply() against a fake Cordis context, plus the switch
-node scripts/persistence-check.mjs   # write a folder, stop the stack, start it again, read it back
-node scripts/settings-check.mjs      # the switch persists and reaches the app child
-node scripts/allowlocal-behaviour.mjs # the switch's semantics, against OpenMAIC's real guard
-node scripts/inspect-db.mjs          # every table and row count in the embedded database
+node scripts/card-check.mjs
 ```
 
-`smoke` asserts that the page answers 200, that `frame-ancestors` admits the
-Harness origin, and that `X-Frame-Options` is gone. `persistence-check` is the
-one that matters for users: a folder written through the proxied origin is still
-there after the plugin's own stop/start cycle. `allowlocal-behaviour` compiles
-OpenMAIC's `ssrf-guard.ts` and asserts the toggle flips loopback/RFC1918/CGNAT
-from refused to allowed while metadata stays refused.
+Parses the shipped bundle and asserts the properties that decide whether the card
+is safe and wired correctly:
+
+- `sandbox` is `allow-scripts` only, and `allow-same-origin` **never** appears;
+- the frame CSP blocks network egress and nested frames;
+- the card registers through `slots.inject`, not a bare `register` racing the slot
+  declaration;
+- the Host touches **no** `webServer` route (the exact mistake that wedged the UI);
+- the Host has no network or database dependency.
 
 ## License
 
-Plugin code: MIT. OpenMAIC itself is MIT, copyright the THU-MAIC authors;
-`vendor/OpenMAIC` is a local checkout that never ships with this package.
+MIT. OpenMAIC itself is MIT, copyright the THU-MAIC authors.
