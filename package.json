@@ -1,7 +1,7 @@
 {
   "name": "dsh-openmaic",
-  "version": "0.1.0",
-  "description": "Run THU-MAIC/OpenMAIC fully locally inside DeepSeek Harness: an embedded PGlite-backed PostgreSQL, a managed Next.js server, a sidebar panel that frames the classroom app, and an agent tool that reports its state.",
+  "version": "0.2.0",
+  "description": "OpenMAIC teaching cards for DeepSeek Harness: render an inline interactive lesson card (concept, quiz, walkthrough, slide) in the conversation, with no server and no network.",
   "license": "MIT",
   "author": "0Sakura721",
   "homepage": "https://github.com/0Sakura721/dsh-OpenMAIC#readme",
@@ -17,11 +17,9 @@
     "dsh",
     "dsh-plugin",
     "deepseek-harness",
-    "cordis",
     "openmaic",
-    "classroom",
-    "local-first",
-    "pglite"
+    "teaching",
+    "card"
   ],
   "type": "module",
   "main": "./lib/index.js",
@@ -34,7 +32,6 @@
   },
   "files": [
     "lib",
-    "scripts",
     "assets",
     "cordis.patch.yml",
     "README.md",
@@ -50,13 +47,5 @@
     "client": {
       "platform": "web"
     }
-  },
-  "optionalDependencies": {
-    "@electric-sql/pglite": "^0.5.15",
-    "@electric-sql/pglite-socket": "^0.2.18"
-  },
-  "devDependencies": {
-    "jsdom": "^31.0.0",
-    "pg": "8.22.0"
   }
 }
