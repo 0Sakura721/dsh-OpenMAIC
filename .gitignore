@@ -40,3 +40,9 @@ panel.html
 .*-profile-*/
 .*-check.png
 .*-check-profile/
+
+# Probe profiles and screenshots from the browser checks
+.embed-profile/
+.embed-check.png
+.srcdoc-base-profile/
+.srcdoc-base-check.png
