@@ -62,10 +62,8 @@ function seedIfEmpty() {
 }
 
 const seedSha = seedIfEmpty();
-// Every tracked file, including README: the tree below replaces the whole root
-// rather than merging, so anything omitted would be deleted from the repository.
-const remaining = files;
-log(`${remaining.length} files to publish`);
+const remaining = files.filter((path) => path !== 'README.md');
+log(`${remaining.length} files to add on top of the seed`);
 
 // 1) Blobs. Text goes as utf8; anything with a NUL byte goes as base64.
 const entries = [];
@@ -81,18 +79,15 @@ for (const path of remaining) {
   log(`blob ${path}`);
 }
 
-// 2) A COMPLETE tree, deliberately without `base_tree`.
-//
-// Merging onto the previous tree is what left deleted modules (lib/db.mjs,
-// lib/proxy.mjs, ...) alive on the remote after a rewrite: a merge only adds and
-// overwrites. Publishing the full list makes the remote match the working tree,
-// deletions included.
+// 2) One tree, hanging off the seeded commit's tree.
+const base = JSON.parse(gh(['api', `repos/${repo}/git/commits/${seedSha}`]));
 const tree = JSON.parse(
   gh(['api', '--method', 'POST', `repos/${repo}/git/trees`, '--input', '-'], {
+    base_tree: base.tree.sha,
     tree: entries,
   }),
 );
-log(`tree ${tree.sha.slice(0, 8)} (complete)`);
+log(`tree ${tree.sha.slice(0, 8)}`);
 
 // 3) The real commit, parented on the seed.
 const commit = JSON.parse(
